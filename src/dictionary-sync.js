@@ -12,7 +12,6 @@ import 'rxjs/add/operator/toPromise';
 import {fs} from './promisify';
 import {normalizeLanguageCode} from './utility';
 
-let getURLForHunspellDictionary;
 let d = require('debug')('electron-spellchecker:dictionary-sync');
 
 const app = process.type === 'renderer' ?
@@ -21,6 +20,33 @@ const app = process.type === 'renderer' ?
 
 const {downloadFileOrUrl} =
   require('electron-remote').requireTaskPool(require.resolve('electron-remote/remote-ajax'));
+
+export function getURLForHunspellDictionary(lang) {
+  // NB: This is derived from https://code.google.com/p/chromium/codesearch#chromium/src/chrome/common/spellcheck_common.cc&sq=package:chromium&type=cs&rcl=1464736770&l=107
+  var defaultVersion = '-3-0';
+  var specialVersions = {
+    'tr-tr': '-4-0',
+    'tg-tg': '-5-0',
+    'en-ca': '-7-1',
+    'en-gb': '-7-1',
+    'en-us': '-7-1',
+    'fa-ir': '-7-0',
+  };
+
+  var nonFormedLangCode = ['ko', 'sh', 'sq', 'sr'];
+  var langCode = lang.replace(/_/g, '-').toLowerCase();
+
+  //some bdict in choromium does not follow form of language code with locale,
+  //formed as language only (i.e, https://src.chromium.org/viewvc/chrome/trunk/deps/third_party/hunspell_dictionaries/ko-3-0.bdic)
+  var language = langCode.split('-')[0];
+  for (var idx = 0; idx < nonFormedLangCode.length; idx++) {
+    if (language === nonFormedLangCode[idx]) {
+      langCode = nonFormedLangCode[idx];
+    }
+  }
+
+  return "https://redirector.gvt1.com/edgedl/chrome/dict/" + langCode + (specialVersions[langCode] || defaultVersion) + ".bdic";
+}
 
 /**
  * DictioanrySync handles downloading and saving Hunspell dictionaries. Pass it
@@ -35,9 +61,6 @@ export default class DictionarySync {
    *                              will be used.
    */
   constructor(cacheDir=null) {
-    // NB: Require here so that consumers can handle native module exceptions.
-    getURLForHunspellDictionary = require('./node-spellchecker').getURLForHunspellDictionary;
-
     this.cacheDir = cacheDir || path.join(app.getPath('userData'), 'dictionaries');
     mkdirp.sync(this.cacheDir);
   }
@@ -101,6 +124,7 @@ export default class DictionarySync {
     }
 
     let url = getURLForHunspellDictionary(lang);
+    console.log(url);
     d(`Actually downloading ${url}`);
     await downloadFileOrUrl(url, target);
 
